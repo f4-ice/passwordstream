@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: passwordstream_user
+      POSTGRES_PASSWORD: 2eff4433a10be87e1d910befa4b5297393afb2422653917a
+      POSTGRES_DB: passwordstream
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Map the schema files to automatically run on first startup
+      - ./passwordstream-backend/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U passwordstream_user -d passwordstream"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./passwordstream-backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./passwordstream-backend/.env
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./passwordstream
+      dockerfile: Dockerfile
+    ports:
+      - "8081:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
