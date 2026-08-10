@@ -16,6 +16,7 @@
   <p>
     <a href="https://passwordstream.com"><strong>View Live Demo »</strong></a>
   </p>
+  <p>The password for the site gate is: 123</p>
 </div>
 
 <br/>
