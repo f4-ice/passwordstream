@@ -13,7 +13,9 @@
 PasswordStream is an open-source, functional demo of a possible **zero-knowledge password manager product**, with client-side vault encryption, master-password rotation, and encrypted sharing.
 
 It demonstrates how the main workflows of a real product could operate across a React frontend, Node.js API, and PostgreSQL database. The project has not received an independent security audit, so it should be treated as a product prototype rather than a production-ready service.
+
 </div>
+
 ## What PasswordStream implements
 
 - PBKDF2-SHA-256 with 600,000 iterations derives separate authentication and AES-256-GCM key material from the master password and normalized email.
