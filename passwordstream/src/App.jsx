@@ -5,21 +5,20 @@
  * Manages the global state for the JWT token and cryptographic keys (Encryption Key, Asymmetric Keys)
  * so they can be passed down to the Dashboard and Account pages securely in memory.
  */
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import siteLogo from './assets/logo.svg';
 import './index.css';
 import Login from './Login.jsx';
 import Signup from './Signup.jsx';
 import Dashboard from './Dashboard.jsx';
 import Account from './Account.jsx';
-import SiteGate from './SiteGate.jsx';
 import Legal from './Legal.jsx';
 import FAQ from './FAQ.jsx';
 import DatabaseSchema from './DatabaseSchema.jsx';
 import Checkout from './Checkout.jsx';
 
 const CheckIcon = () => (
-  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
+  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
     <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
   </svg>
 );
@@ -82,7 +81,6 @@ const App = () => {
   // Security parameters stored purely in memory
   const [encryptionKey, setEncryptionKey] = useState(null);
   const [asymKeys, setAsymKeys] = useState(null);
-
   const [selectedPlan, setSelectedPlan] = useState(null);
 
   const handleLoginSuccess = (newToken, newEncryptionKey, newAsymKeys) => {
@@ -122,7 +120,7 @@ const App = () => {
             
             {/* Left Card */}
             <div className="hero-title-card" style={{ flex: '1', minWidth: '300px', backgroundColor: 'white', borderRadius: '24px', padding: '4rem 2rem', boxShadow: '0 10px 40px rgba(0,0,0,0.05)', textAlign: 'center' }}>
-              <h1 style={{ fontFamily: '"Impact", "Arial Black", sans-serif', color: '#4facfe', fontSize: 'clamp(2.5rem, 5vw, 4rem)', margin: 0, lineHeight: 1.2, textTransform: 'uppercase', letterSpacing: '2px', textShadow: '2px 2px 4px rgba(0,0,0,0.1)' }}>
+              <h1 style={{ color: '#4facfe', fontSize: 'clamp(2.5rem, 5vw, 4rem)', margin: 0, lineHeight: 1.2, textTransform: 'uppercase', letterSpacing: '2px', textShadow: '2px 2px 4px rgba(0,0,0,0.1)' }}>
                 YOUR PASSWORD<br/>MANAGER
               </h1>
             </div>
@@ -134,8 +132,8 @@ const App = () => {
                 <div style={{ width: '140px', height: '140px', backgroundColor: 'white', borderRadius: '50%', marginBottom: '1.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                    <img src="/f4-ice-logo.png" alt="f4-ice logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> 
                 </div>
-                <h3 style={{ margin: '0 0 1.5rem 0', fontSize: '1.2rem', fontWeight: 'bold' }}>Check Out My Github!</h3>
-                <a href="https://github.com" style={{ backgroundColor: 'white', color: '#111524', padding: '0.7rem 1.8rem', borderRadius: '50px', fontWeight: 'bold', textDecoration: 'none', display: 'inline-block', fontSize: '0.95rem', cursor: 'pointer' }}>Follow Github</a>
+                <h3 style={{ margin: '0 0 1.5rem 0', width: '100%', fontSize: '1.2rem', fontWeight: 'bold', textAlign: 'center' }}>PasswordStream on GitHub</h3>
+                <a href="https://github.com/f4-ice/passwordstream" target="_blank" rel="noopener noreferrer" style={{ backgroundColor: 'white', color: '#111524', padding: '0.7rem 1.8rem', borderRadius: '50px', fontWeight: 'bold', textDecoration: 'none', display: 'inline-block', fontSize: '0.95rem', cursor: 'pointer' }}>View Repository</a>
               </div>
             </div>
 
@@ -144,7 +142,7 @@ const App = () => {
         <section className="flowcharts-section">
           <div className="flowchart-header">
             <h2 className="flowchart-title">Zero-Knowledge Architecture</h2>
-            <p>Scroll to explore the cryptographic flows</p>
+            <p>Explore PasswordStream's cryptographic flows and trust boundaries.</p>
           </div>
 
           <div className="flowchart-scroll-container">
@@ -159,32 +157,32 @@ const App = () => {
                   <div className="flow-connector"></div>
                   <div className="flow-box algo-box">
                     <h4>Convert to Bytes</h4>
-                    <p>Strings are turned into raw computer bytes (ArrayBuffer).</p>
+                    <p>The password and normalized email are encoded as UTF-8 bytes.</p>
                   </div>
                   <div className="flow-connector"></div>
                   <div className="flow-box algo-box">
                     <h4>PBKDF2 Key Derivation</h4>
-                    <p>Smash the bytes 600,000 times using SHA-256 and your Email as a 'Salt' to prevent guessing.</p>
+                    <p>Derive 512 bits with PBKDF2-SHA-256, 600,000 iterations, and the normalized email as salt.</p>
                   </div>
                   <div className="flow-connector"></div>
                   <div className="flow-box">
-                    <h4>512-Bit Master Key</h4>
-                    <p>A massive, extremely secure cryptographic key is born.</p>
+                    <h4>512-Bit Derived Material</h4>
+                    <p>PBKDF2 returns key material whose safety still depends on the strength of the master password.</p>
                   </div>
                   <div className="flow-connector"></div>
                   <div className="flow-box algo-box">
                     <h4>Slice the Key</h4>
-                    <p>Cut the 512 bits perfectly in half into two 256-bit chunks.</p>
+                    <p>Split the 512 bits into two separate 256-bit values.</p>
                   </div>
                   <div className="flow-connector"></div>
                   <div className="flow-box">
                     <h4>Auth Key (First Half)</h4>
-                    <p>Sent to the server to log you in. The server NEVER sees your real password.</p>
+                    <p>Sent to the server as a derived verifier input; the raw master password is not sent by the original client.</p>
                   </div>
                   <div className="flow-connector"></div>
                   <div className="flow-box">
                     <h4>Encryption Key (Second Half)</h4>
-                    <p>Imported into AES-GCM and stays strictly hidden on your device to lock your vault.</p>
+                    <p>Imported into AES-GCM and kept in browser memory by the original client.</p>
                   </div>
                 </div>
               </div>
@@ -195,28 +193,28 @@ const App = () => {
                 <div className="flow-row-title">Vault Encryption</div>
                 <div className="flow-row">
                   <div className="flow-box">
-                    <h4>Raw Vault Data</h4>
-                    <p>For example: your Netflix username and password saved in a plain JSON object.</p>
+                    <h4>Single Credential Data</h4>
+                    <p>Each credential—such as its title, username, password, URL, and notes—is serialized as a separate JSON object in browser memory.</p>
                   </div>
                   <div className="flow-connector"></div>
                   <div className="flow-box algo-box">
                     <h4>Generate Random IV</h4>
-                    <p>Create a random 12-byte 'Initialization Vector' so every encryption looks completely unique.</p>
+                    <p>Create a random 12-byte initialization vector for each encryption.</p>
                   </div>
                   <div className="flow-connector"></div>
                   <div className="flow-box algo-box">
                     <h4>AES-256-GCM Encryption</h4>
-                    <p>Lock the JSON using your secret 256-bit Encryption Key and the random IV.</p>
+                    <p>Encrypt that credential's JSON object with the 256-bit Encryption Key and random IV.</p>
                   </div>
                   <div className="flow-connector"></div>
                   <div className="flow-box">
-                    <h4>Create Secure Blob</h4>
-                    <p>Convert the scrambled text and the IV into Hex strings.</p>
+                    <h4>Create Encrypted Blob</h4>
+                    <p>Encode the AES-GCM ciphertext, authentication tag, and IV as hex strings.</p>
                   </div>
                   <div className="flow-connector"></div>
                   <div className="flow-box">
                     <h4>Upload to Database</h4>
-                    <p>Server stores the blob but has zero knowledge of your Encryption Key, so it can NEVER read it.</p>
+                    <p>A passive database copy contains ciphertext, not the encryption key. A modified frontend can still capture plaintext or keys.</p>
                   </div>
                 </div>
               </div>
@@ -228,33 +226,33 @@ const App = () => {
                 <div className="flow-row">
                   <div className="flow-box">
                     <h4>Setup (Done at Signup)</h4>
-                    <p>You generated an RSA lock/key pair for encryption, and an ECDSA pair for signatures.</p>
+                    <p>The browser generates RSA and ECDSA key pairs, uploads the public keys, and uploads the private keys encrypted with the master-derived AES key.</p>
                   </div>
                   <div className="flow-connector"></div>
                   <div className="flow-box">
-                    <h4>Fetch Receiver's Lock</h4>
-                    <p>You want to share a password. You ask the server for the Receiver's Public RSA Key.</p>
+                    <h4>Fetch & Verify Receiver Key</h4>
+                    <p>Fetch the receiver's public RSA key, then verify its displayed SHA-256 fingerprint through another channel.</p>
                   </div>
                   <div className="flow-connector"></div>
                   <div className="flow-box algo-box">
-                    <h4>Encrypt Data</h4>
-                    <h4>(RSA-OAEP)</h4>
-                    <p>You put the password in a box and lock it with THEIR RSA Public Key. Now ONLY THEY can open it!</p>
+                    <h4>Hybrid Encryption</h4>
+                    <h4>(AES-GCM + RSA-OAEP)</h4>
+                    <p>A random AES key encrypts the payload; RSA-OAEP wraps only that key for the recipient.</p>
                   </div>
                   <div className="flow-connector"></div>
                   <div className="flow-box algo-box">
                     <h4>Sign Data (ECDSA P-256)</h4>
-                    <p>You stamp the locked box with YOUR Private ECDSA signature to mathematically prove you actually sent it.</p>
+                    <p>The sender signs the complete versioned envelope with their ECDSA private key.</p>
                   </div>
                   <div className="flow-connector"></div>
                   <div className="flow-box">
                     <h4>Server Routing</h4>
-                    <p>The server delivers the locked, stamped box. It cannot peek inside!</p>
+                    <p>The server stores and routes the signed encrypted envelope without receiving its AES plaintext key.</p>
                   </div>
                   <div className="flow-connector"></div>
                   <div className="flow-box algo-box">
-                    <h4>Receiver Opens Box</h4>
-                    <p>Receiver checks your stamp with your Public ECDSA Key, then unlocks the box with their Private RSA Key.</p>
+                    <h4>Verify & Decrypt</h4>
+                    <p>The receiver verifies the signature with the server-supplied sender ECDSA key, unwraps the AES key with RSA, and decrypts the payload.</p>
                   </div>
                 </div>
               </div>
@@ -262,26 +260,26 @@ const App = () => {
 
             <div className="flow-row-wrapper">
               <div className="flow-content-card">
-                <div className="flow-row-title">Biometric Authentication</div>
+                <div className="flow-row-title">Threat-model Boundary</div>
                 <div className="flow-row">
                   <div className="flow-box">
-                    <h4>Biometric Prompt</h4>
-                    <p>Device asks you to look at the camera (FaceID / Windows Hello).</p>
+                    <h4>Protected Scenario</h4>
+                    <p>A passive database theft exposes encrypted vault blobs, account metadata, and password verifiers.</p>
                   </div>
                   <div className="flow-connector"></div>
                   <div className="flow-box algo-box">
-                    <h4>Secure Enclave</h4>
-                    <p>Your hardware securely matches your face locally. Face data NEVER leaves the device!</p>
+                    <h4>Required Assumptions</h4>
+                    <p>The master password is strong and the browser loads the intended, unmodified frontend.</p>
                   </div>
                   <div className="flow-connector"></div>
                   <div className="flow-box algo-box">
-                    <h4>Sign Challenge (ECDSA)</h4>
-                    <p>Device signs a random server challenge using your secure Hardware Private Key.</p>
+                    <h4>Not Protected</h4>
+                    <p>An active server or supply-chain compromise can serve JavaScript that captures passwords, keys, or plaintext.</p>
                   </div>
                   <div className="flow-connector"></div>
                   <div className="flow-box">
-                    <h4>Server Verification</h4>
-                    <p>Server mathematically verifies the signature using your Public Key to log you in.</p>
+                    <h4>Security Status</h4>
+                    <p>PasswordStream is a working password manager, but it has not received an independent security audit.</p>
                   </div>
                 </div>
               </div>
@@ -294,7 +292,7 @@ const App = () => {
             <div className="tech-track">
               <div className="tech-card">
                 <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/react/react-original.svg" alt="React" />
-                React 18
+                React 19
               </div>
               <div className="tech-card">
                 <img src="https://vitejs.dev/logo.svg" alt="Vite" />
@@ -318,17 +316,13 @@ const App = () => {
               </div>
               <div className="tech-card">
                 Web Crypto API
-              </div>
-              <div className="tech-card">
-                <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/amazonwebservices/amazonwebservices-original-wordmark.svg" alt="AWS" className="invert" />
-                AWS EC2
               </div>
             </div>
             {/* Duplicated track for seamless infinite marquee loop */}
             <div className="tech-track" aria-hidden="true">
               <div className="tech-card">
                 <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/react/react-original.svg" alt="React" />
-                React 18
+                React 19
               </div>
               <div className="tech-card">
                 <img src="https://vitejs.dev/logo.svg" alt="Vite" />
@@ -352,10 +346,6 @@ const App = () => {
               </div>
               <div className="tech-card">
                 Web Crypto API
-              </div>
-              <div className="tech-card">
-                <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/amazonwebservices/amazonwebservices-original-wordmark.svg" alt="AWS" className="invert" />
-                AWS EC2
               </div>
             </div>
           </div>
@@ -367,7 +357,7 @@ const App = () => {
           </div>
           <div className="tech-details-grid">
             <div className="tech-detail-card">
-              <h3><img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/react/react-original.svg" alt="React" style={{ width: '24px', verticalAlign: 'middle', marginRight: '8px' }} /> React 18</h3>
+              <h3><img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/react/react-original.svg" alt="React" style={{ width: '24px', verticalAlign: 'middle', marginRight: '8px' }} /> React 19</h3>
               <p>Powers the dynamic frontend, providing a seamless and highly responsive user interface with component-level state management.</p>
             </div>
             <div className="tech-detail-card">
@@ -376,23 +366,19 @@ const App = () => {
             </div>
             <div className="tech-detail-card">
               <h3><img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/nodejs/nodejs-original.svg" alt="Node.js" style={{ width: '24px', verticalAlign: 'middle', marginRight: '8px' }} /> Node.js & Express</h3>
-              <p>Provides the robust, scalable backend infrastructure to handle API routing, session management, and database connections.</p>
+              <p>Handles API routing, token verification, and database access for PasswordStream.</p>
             </div>
             <div className="tech-detail-card">
               <h3><img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/postgresql/postgresql-original.svg" alt="PostgreSQL" style={{ width: '24px', verticalAlign: 'middle', marginRight: '8px' }} /> PostgreSQL</h3>
-              <p>A highly reliable relational database used to store strictly encrypted user vaults and authentication metadata.</p>
+              <p>Stores account metadata, encrypted private keys, encrypted vault items, and encrypted shares.</p>
             </div>
             <div className="tech-detail-card">
               <h3><img src="https://www.vectorlogo.zone/logos/docker/docker-icon.svg" alt="Docker" style={{ width: '24px', verticalAlign: 'middle', marginRight: '8px' }} /> Docker</h3>
-              <p>Containerizes the entire application architecture, guaranteeing perfectly consistent and reproducible deployments across any environment.</p>
+              <p>Packages the application services into reproducible development containers.</p>
             </div>
             <div className="tech-detail-card">
               <h3>Web Crypto API</h3>
-              <p>Executes military-grade zero-knowledge encryption algorithms (AES-GCM, RSA, ECDSA) directly inside the browser sandbox before any data reaches the server.</p>
-            </div>
-            <div className="tech-detail-card" style={{ gridColumn: '1 / -1', maxWidth: '600px', margin: '0 auto' }}>
-              <h3><img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/amazonwebservices/amazonwebservices-original-wordmark.svg" alt="AWS" style={{ width: '36px', verticalAlign: 'middle', marginRight: '8px' }} /> AWS EC2</h3>
-              <p>Delivers the highly available, reliable cloud infrastructure where the Node backend and PostgreSQL database are securely hosted.</p>
+              <p>Provides standard browser implementations of AES-GCM, RSA-OAEP, ECDSA, PBKDF2, and secure random generation.</p>
             </div>
           </div>
         </section>
@@ -400,89 +386,64 @@ const App = () => {
 
         <section className="features-section">
           <div className="features-header">
-            <h2>Why Choose Us</h2>
-            <p>Discover why thousands trust PasswordStream to secure their digital lives.</p>
+            <h2>PasswordStream Features</h2>
+            <p>A zero-knowledge password manager built around browser cryptography and encrypted storage.</p>
           </div>
           <div className="features-grid">
 
             <div className="feature-card">
               <div className="feature-icon-wrapper"><WalletIcon /></div>
-              <h3>Unbeatable Value</h3>
-              <p>Premium security shouldn't break the bank. Enjoy top-tier protection at an affordable price point that makes sense for everyone.</p>
+              <h3>Open Architecture</h3>
+              <p>Inspect key derivation, authenticated encryption, password rotation, and hybrid sharing in the source code.</p>
             </div>
 
             <div className="feature-card">
               <div className="feature-icon-wrapper"><ShieldIcon /></div>
-              <h3>Rock-Solid Reliability</h3>
-              <p>Built on infrastructure you can count on. Your credentials are always available when you need them, with maximum uptime guaranteed.</p>
+              <h3>Explicit Limitations</h3>
+              <p>No security audit, availability promise, certification, or production-readiness claim is made.</p>
             </div>
 
             <div className="feature-card">
               <div className="feature-icon-wrapper"><LockIcon /></div>
-              <h3>Zero-Knowledge Architecture</h3>
-              <p>Total privacy by design. Your data is encrypted before it ever leaves your device, meaning even we cannot access your passwords.</p>
+              <h3>Client-side Encryption</h3>
+              <p>The intended frontend encrypts vault payloads before upload, protecting against passive database disclosure under documented assumptions.</p>
             </div>
 
             <div className="feature-card">
               <div className="feature-icon-wrapper"><GlobeIcon /></div>
-              <h3>Access Anywhere</h3>
-              <p>Your digital vault lives securely in the cloud. Seamlessly access your credentials from any browser, on any device, anywhere in the world.</p>
+              <h3>Review and Experiment</h3>
+              <p>Run locally, inspect the source, execute the development checks, and treat findings as learning material—not product guarantees.</p>
             </div>
 
           </div>
         </section>
         <section className="plans-section">
-          <h2 className="plans-title">Plans</h2>
+          <div className="features-header">
+            <h2 className="plans-title">Illustrative Plans</h2>
+            <p>Fictional pricing included only to demonstrate a possible product presentation and checkout flow.</p>
+          </div>
           <div className="plans-grid">
-
-            <div
-              className="plan-card"
-              style={{ cursor: 'pointer' }}
-              onClick={() => { setSelectedPlan({ name: 'Basic', price: '2$/year' }); setCurrentPage('checkout'); }}
-            >
-              <h3 className="plan-name">Basic</h3>
-              <div className="plan-price">2$/year</div>
-              <ul className="plan-features">
-                <li><CheckIcon /> <span>Generate passwords securely</span></li>
-                <li><CheckIcon /> <span>Use on all of your devices</span></li>
-                <li><CheckIcon /> <span>Share passwords with anyone using PasswordStream</span></li>
-                <li><CheckIcon /> <span>Up to 1 account</span></li>
-              </ul>
-              <div className="plan-action" style={{ textAlign: 'center', marginTop: '1.5rem', color: 'var(--primary-blue)', fontWeight: 'bold' }}>Select Plan ➔</div>
-            </div>
-
-            <div
-              className="plan-card"
-              style={{ cursor: 'pointer' }}
-              onClick={() => { setSelectedPlan({ name: 'Family', price: '4$/year' }); setCurrentPage('checkout'); }}
-            >
-              <h3 className="plan-name">Family</h3>
-              <div className="plan-price">4$/year</div>
-              <ul className="plan-features">
-                <li><CheckIcon /> <span>Generate passwords securely</span></li>
-                <li><CheckIcon /> <span>Use on all of your devices</span></li>
-                <li><CheckIcon /> <span>Share passwords with anyone using PasswordStream</span></li>
-                <li><CheckIcon /> <span>Up to 5 accounts</span></li>
-              </ul>
-              <div className="plan-action" style={{ textAlign: 'center', marginTop: '1.5rem', color: 'var(--primary-blue)', fontWeight: 'bold' }}>Select Plan ➔</div>
-            </div>
-
-            <div
-              className="plan-card"
-              style={{ cursor: 'pointer' }}
-              onClick={() => { setSelectedPlan({ name: 'Group', price: '20$/year' }); setCurrentPage('checkout'); }}
-            >
-              <h3 className="plan-name">Group</h3>
-              <div className="plan-price">20$/year</div>
-              <ul className="plan-features">
-                <li><CheckIcon /> <span>Generate passwords securely</span></li>
-                <li><CheckIcon /> <span>Use on all of your devices</span></li>
-                <li><CheckIcon /> <span>Share passwords with anyone using PasswordStream</span></li>
-                <li><CheckIcon /> <span>Up to 100 accounts</span></li>
-              </ul>
-              <div className="plan-action" style={{ textAlign: 'center', marginTop: '1.5rem', color: 'var(--primary-blue)', fontWeight: 'bold' }}>Select Plan ➔</div>
-            </div>
-
+            {[
+              { name: 'Basic', price: '$2/year', accounts: '1 account' },
+              { name: 'Family', price: '$4/year', accounts: 'Up to 5 accounts' },
+              { name: 'Group', price: '$20/year', accounts: 'Up to 100 accounts' }
+            ].map(plan => (
+              <div
+                key={plan.name}
+                className="plan-card"
+                style={{ cursor: 'pointer' }}
+                onClick={() => { setSelectedPlan(plan); setCurrentPage('checkout'); }}
+              >
+                <h3 className="plan-name">{plan.name}</h3>
+                <div className="plan-price">{plan.price}</div>
+                <ul className="plan-features">
+                  <li><CheckIcon /> <span>Encrypted credential storage</span></li>
+                  <li><CheckIcon /> <span>Hybrid password sharing</span></li>
+                  <li><CheckIcon /> <span>{plan.accounts}</span></li>
+                </ul>
+                <div className="plan-action" style={{ textAlign: 'center', marginTop: '1.5rem', color: 'var(--primary-blue)', fontWeight: 'bold' }}>Preview checkout ➔</div>
+              </div>
+            ))}
           </div>
         </section>
         <FAQ />
@@ -491,8 +452,7 @@ const App = () => {
   };
 
   return (
-    <SiteGate>
-      <div className="app-container">
+    <div className="app-container">
         <header className="header">
           <div className="logo" onClick={() => setCurrentPage('landing')} style={{ cursor: 'pointer' }}>
             <img src={siteLogo} alt="PasswordStream" className="logo-image" />
@@ -524,20 +484,19 @@ const App = () => {
             </div>
             <div className="footer-links">
               <a href="#legal" onClick={(e) => { e.preventDefault(); setCurrentPage('legal'); }}>
-                Legal & Compliance
+                Security & Data Notice
               </a>
             </div>
           </div>
           <div className="footer-bottom">
             <div className="demo-warning-banner">
               <div className="demo-warning-text">
-                <strong>Educational Demo:</strong> <br />This application is for educational purposes only and is not a real product. The objective of this project was to learn and implement advanced zero-knowledge encryption and modern credential management technologies.
+                <strong>Project Status:</strong> <br />PasswordStream is a working zero-knowledge password manager and educational project. It is unaudited, and client-side encryption does not protect against a malicious or modified frontend.
               </div>
             </div>
           </div>
         </footer>
-      </div>
-    </SiteGate>
+    </div>
   );
 }
 

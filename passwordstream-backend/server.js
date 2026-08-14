@@ -10,6 +10,7 @@ import jwt from 'jsonwebtoken';
 import pkg from 'pg';
 // Import dotenv to load environment variables from a .env file into process.env
 import dotenv from 'dotenv';
+import { createRateLimiter, securityHeaders } from './security.js';
 
 // Execute the dotenv config function to actually read the .env file and load the variables
 dotenv.config();
@@ -19,11 +20,24 @@ const { Pool } = pkg;
 // Initialize the Express application instance
 const app = express();
 
-// Use the CORS middleware to allow cross-origin requests
-app.use(cors());
+app.disable('x-powered-by');
+if (process.env.TRUST_PROXY) {
+  app.set('trust proxy', Number(process.env.TRUST_PROXY) || process.env.TRUST_PROXY);
+}
+app.use(securityHeaders);
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://localhost:8081')
+  .split(',')
+  .map(origin => origin.trim());
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    callback(new Error('Origin not allowed'));
+  }
+}));
 // Use the JSON middleware to automatically parse incoming JSON payloads in request bodies
 // Example Data That Needs Translation: '{"email":"test@example.com","authKey":"xyz123"}'
 app.use(express.json());
+const authLimiter = createRateLimiter({ windowMs: 15 * 60 * 1000, max: 10 });
 
 // ---------------------------------------------------------
 // DATABASE CONNECTION SETUP
@@ -45,79 +59,9 @@ const pool = new Pool({
 // Define the secret key used to sign JSON Web Tokens. It should be securely stored in .env in production!
 // When a user successfully logs in, the server generates a JWT that essentially acts as a temporary digital ID card for the user. After that the JWT_SECRET is used to verify and validate the JWT.
 const JWT_SECRET = process.env.JWT_SECRET;
-
-  // ---------------------------------------------------------
-  // GLOBAL SITE CONFIGURATION (SITE GATE)
-  // ---------------------------------------------------------
-  (async () => {
-    try {
-      // Execute a SQL query to create the site_config table if it doesn't already exist
-      await pool.query(`
-      CREATE TABLE IF NOT EXISTS site_config (
-        key VARCHAR(50) PRIMARY KEY,
-        value VARCHAR(255) NOT NULL
-      );
-    `);
-
-      // Ensure face_descriptor column exists in users table (migration)
-      try {
-        await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS face_descriptor TEXT;`);
-      } catch (err) {
-        console.log('Skipping face_descriptor migration, users table might not exist yet.');
-      }
-
-      // Check if the global site password has already been set in the database
-      const res = await pool.query(`SELECT value FROM site_config WHERE key = 'site_password'`);
-
-      // If no password exists in the database (i.e. first time booting the server)
-      if (res.rows.length === 0) {
-        // Generate a cryptographic salt with a cost factor of 10
-        const salt = await bcrypt.genSalt(10);
-        // Hash the site password from the environment variables using the salt
-        const hash = await bcrypt.hash(process.env.SITE_PASSWORD, salt);
-        // Insert the hashed password into the database so it's safely stored
-        await pool.query(`INSERT INTO site_config (key, value) VALUES ('site_password', $1)`, [hash]);
-        // Log to the console that the initialization was successful
-        console.log('Site password initialized in database.');
-      }
-    } catch (err) {
-      // If anything goes wrong connecting to or querying the database, log the error
-      console.error('Failed to initialize site_config:', err);
-    }
-  })(); // The () executes the function immediately
-
-// Endpoint to verify the global site password entered by a visitor
-app.post('/api/verify-site-password', async (req, res) => {
-  // Extract the password from the incoming request body
-  const { password } = req.body;
-  // If no password was provided, send back a 400 Bad Request error
-  if (!password) return res.status(400).json({ message: 'Password required' });
-
-  try {
-    // Fetch the hashed site password from the database
-    const result = await pool.query(`SELECT value FROM site_config WHERE key = 'site_password'`);
-    // If it's missing, the database wasn't initialized properly. Return a 500 Server Error
-    if (result.rows.length === 0) return res.status(500).json({ message: 'Site password not configured' });
-
-    // Extract the hash string from the database row
-    const hash = result.rows[0].value;
-    // Use bcrypt to securely compare the plain-text password from the user with the stored hash
-    const isValid = await bcrypt.compare(password, hash);
-
-    // If the password matches
-    if (isValid) {
-      // Respond with a success payload
-      res.json({ valid: true });
-    } else {
-      // If it doesn't match, respond with a 401 Unauthorized error
-      res.status(401).json({ message: 'Incorrect password' });
-    }
-  } catch (err) {
-    // Catch any unexpected errors, log them, and return a 500 Server Error
-    console.error(err);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
+if (!JWT_SECRET || JWT_SECRET.length < 32) {
+  throw new Error('JWT_SECRET must be configured with at least 32 characters');
+}
 
 // ---------------------------------------------------------
 // AUTHENTICATION MIDDLEWARE
@@ -144,21 +88,20 @@ const authenticateToken = (req, res, next) => {
 };
 
 // ---------------------------------------------------------
-// AUTHENTICATION ROUTES (Zero-Knowledge)
+// AUTHENTICATION ROUTES (client-derived authentication key)
 // ---------------------------------------------------------
 
 // Endpoint to handle new user registration
-app.post('/api/signup', async (req, res) => {
+app.post('/api/signup', authLimiter, async (req, res) => {
   // Extract all the required fields from the request body. 
-  // Notice we only receive "authKey" (a pre-hashed version of the master password) and public/private keys, never the raw master password!
+  // The intended client sends a derived authentication key, not the raw master password.
   const {
     email,
     authKey,
     publicRsaKey,
     encryptedPrivateRsaKey,
     publicEcdsaKey,
-    encryptedPrivateEcdsaKey,
-    faceDescriptor
+    encryptedPrivateEcdsaKey
   } = req.body;
 
   // Validate that absolutely every piece of cryptographic data was provided
@@ -170,18 +113,16 @@ app.post('/api/signup', async (req, res) => {
   try {
     // Generate a salt to hash the authKey before storing it in the database
     const salt = await bcrypt.genSalt(10);
-    // Hash the authKey. We are essentially hashing a hash, providing excellent security!
+    // Hash the derived authentication key before storing it.
     const authKeyHash = await bcrypt.hash(authKey, salt);
-
-    const faceDescriptorStr = faceDescriptor ? JSON.stringify(faceDescriptor) : null;
 
     // Insert the new user's email and all their cryptographic data into the database.
     // The RETURNING clause immediately gives us back the newly generated user ID and their email.
     const result = await pool.query(
       `INSERT INTO users (
-        email, auth_key_hash, public_rsa_key, encrypted_private_rsa_key, public_ecdsa_key, encrypted_private_ecdsa_key, face_descriptor
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, email`,
-      [email, authKeyHash, publicRsaKey, encryptedPrivateRsaKey, publicEcdsaKey, encryptedPrivateEcdsaKey, faceDescriptorStr]
+        email, auth_key_hash, public_rsa_key, encrypted_private_rsa_key, public_ecdsa_key, encrypted_private_ecdsa_key
+      ) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, email`,
+      [email, authKeyHash, publicRsaKey, encryptedPrivateRsaKey, publicEcdsaKey, encryptedPrivateEcdsaKey]
     );
 
     // Respond with a 201 Created status and the user's basic info
@@ -198,9 +139,9 @@ app.post('/api/signup', async (req, res) => {
 });
 
 // Endpoint to handle user login
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', authLimiter, async (req, res) => {
   // Extract email and the pre-hashed authKey from the request body
-  const { email, authKey, faceDescriptor } = req.body;
+  const { email, authKey } = req.body;
   // Require both fields
   if (!email || !authKey) return res.status(400).json({ message: 'Email and AuthKey are required' });
 
@@ -217,27 +158,6 @@ app.post('/api/login', async (req, res) => {
 
     // If the comparison fails, the password was wrong. Reject the request.
     if (!validKey) return res.status(401).json({ message: 'Invalid credentials' });
-
-    // Handle facial recognition if the user enabled it
-    if (user.face_descriptor) {
-      if (!faceDescriptor) {
-        return res.status(403).json({ face_required: true, message: 'Face scan required' });
-      }
-
-      const storedDescriptor = JSON.parse(user.face_descriptor);
-      
-      // Calculate Euclidean distance
-      let distance = 0;
-      for (let i = 0; i < storedDescriptor.length; i++) {
-        distance += Math.pow(storedDescriptor[i] - faceDescriptor[i], 2);
-      }
-      distance = Math.sqrt(distance);
-      
-      // Threshold for face-api.js euclidean distance is typically 0.6
-      if (distance > 0.6) {
-        return res.status(401).json({ message: 'Face recognition failed' });
-      }
-    }
 
     // If login is successful, generate a JWT token containing the user's ID and email.
     // The token is set to expire in 24 hours.
@@ -278,7 +198,7 @@ app.post('/api/vault', authenticateToken, async (req, res) => {
       [req.user.id, encrypted_payload, iv]
     );
     // Return a 201 Created status alongside the ID of the new item
-    res.status(201).json({ id: result.rows[0].id, message: 'Vault item securely stored' });
+    res.status(201).json({ id: result.rows[0].id, message: 'Encrypted vault item stored' });
   } catch (err) {
     // Log errors and return a 500 status if insertion fails
     console.error(err);
@@ -317,7 +237,7 @@ app.put('/api/vault/:id', authenticateToken, async (req, res) => {
     // If rowCount is 0, it means no item matched the ID and user_id combo, so return a 404 Not Found error
     if (result.rowCount === 0) return res.status(404).json({ message: 'Item not found' });
     // Otherwise, return a success message
-    res.json({ message: 'Vault item updated securely' });
+    res.json({ message: 'Encrypted vault item updated' });
   } catch (err) {
     // Catch and handle server errors
     console.error(err);
@@ -419,7 +339,7 @@ app.get('/api/shares', authenticateToken, async (req, res) => {
 // ---------------------------------------------------------
 
 // Endpoint to completely delete a user's account and all their data
-app.delete('/api/account', authenticateToken, async (req, res) => {
+app.delete('/api/account', authenticateToken, authLimiter, async (req, res) => {
   // Require the user to re-enter their master password (authKey) for safety before deletion
   const { authKey } = req.body;
   // If not provided, reject the request
@@ -448,13 +368,39 @@ app.delete('/api/account', authenticateToken, async (req, res) => {
 
 // Endpoint to handle Master Password changes
 // Changing the master password fundamentally changes the encryption key, so ALL vault items must be re-encrypted and uploaded!
-app.put('/api/account/password', authenticateToken, async (req, res) => {
+app.get('/api/account/keys', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT encrypted_private_rsa_key, encrypted_private_ecdsa_key FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ message: 'User not found' });
+    res.json({
+      encryptedPrivateRsaKey: result.rows[0].encrypted_private_rsa_key,
+      encryptedPrivateEcdsaKey: result.rows[0].encrypted_private_ecdsa_key
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Failed to retrieve encrypted account keys' });
+  }
+});
+
+app.put('/api/account/password', authenticateToken, authLimiter, async (req, res) => {
   // Extract the old password to verify identity, the new password to save, and the massive array of updated vault items
-  const { oldAuthKey, newAuthKey, vault_updates } = req.body;
+  const {
+    oldAuthKey,
+    newAuthKey,
+    vault_updates,
+    encryptedPrivateRsaKey,
+    encryptedPrivateEcdsaKey
+  } = req.body;
 
   // Basic validation to ensure data is present
   if (!oldAuthKey || !newAuthKey) return res.status(400).json({ message: 'Old and new passwords required' });
   if (!Array.isArray(vault_updates)) return res.status(400).json({ message: 'vault_updates must be an array' });
+  if (!encryptedPrivateRsaKey || !encryptedPrivateEcdsaKey) {
+    return res.status(400).json({ message: 'Re-encrypted private keys are required' });
+  }
 
   // Acquire a dedicated client from the pool to run a SQL Transaction
   // A transaction guarantees that either ALL updates succeed, or NONE of them do.
@@ -464,7 +410,7 @@ app.put('/api/account/password', authenticateToken, async (req, res) => {
     await client.query('BEGIN');
 
     // Fetch the user's current stored authKey hash to verify their old password
-    const userRes = await client.query('SELECT auth_key_hash FROM users WHERE id = $1', [req.user.id]);
+    const userRes = await client.query('SELECT auth_key_hash FROM users WHERE id = $1 FOR UPDATE', [req.user.id]);
     // If user is missing, throw an error to trigger the catch block and rollback
     if (userRes.rows.length === 0) throw new Error('User not found');
 
@@ -476,11 +422,31 @@ app.put('/api/account/password', authenticateToken, async (req, res) => {
       return res.status(401).json({ message: 'Incorrect current password' });
     }
 
+    const vaultRes = await client.query('SELECT id FROM vault_items WHERE user_id = $1 FOR UPDATE', [req.user.id]);
+    const existingIds = new Set(vaultRes.rows.map(row => String(row.id)));
+    const updateIds = new Set(vault_updates.map(item => String(item.id)));
+    const completeVaultUpdate = vault_updates.length === updateIds.size
+      && existingIds.size === updateIds.size
+      && [...existingIds].every(id => updateIds.has(id));
+    const validVaultUpdate = vault_updates.every(item =>
+      item && item.id && typeof item.encrypted_payload === 'string' && item.encrypted_payload.length > 0
+      && typeof item.iv === 'string' && /^[0-9a-f]{24}$/i.test(item.iv)
+    );
+    if (!completeVaultUpdate || !validVaultUpdate) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ message: 'A complete and valid vault update is required' });
+    }
+
     // Generate a new salt and hash the new master password
     const salt = await bcrypt.genSalt(10);
     const newAuthKeyHash = await bcrypt.hash(newAuthKey, salt);
     // Update the user's record with the new password hash
-    await client.query('UPDATE users SET auth_key_hash = $1 WHERE id = $2', [newAuthKeyHash, req.user.id]);
+    await client.query(
+      `UPDATE users
+       SET auth_key_hash = $1, encrypted_private_rsa_key = $2, encrypted_private_ecdsa_key = $3
+       WHERE id = $4`,
+      [newAuthKeyHash, encryptedPrivateRsaKey, encryptedPrivateEcdsaKey, req.user.id]
+    );
 
     // Loop through the array of re-encrypted vault items provided by the frontend
     for (const item of vault_updates) {
@@ -495,7 +461,7 @@ app.put('/api/account/password', authenticateToken, async (req, res) => {
     // If the loop finishes without any errors, COMMIT the transaction to permanently save all changes to the database
     await client.query('COMMIT');
     // Return a success message
-    res.json({ message: 'Password changed and vault successfully re-encrypted!' });
+    res.json({ message: 'Password changed; vault and private sharing keys were re-encrypted.' });
   } catch (err) {
     // If ANY error occurs (e.g. database disconnect, malformed data), ROLLBACK the transaction. 
     // This restores the database to exactly how it was before the BEGIN command, preventing data corruption!
@@ -513,5 +479,5 @@ const PORT = process.env.PORT || 3000;
 // Start the Express server and instruct it to listen for incoming network requests on the specified port
 app.listen(PORT, () => {
   // Log a message to the console once the server is successfully running
-  console.log(`Zero-Knowledge Backend API running on port ${PORT}`);
+  console.log(`PasswordStream zero-knowledge API running on port ${PORT}`);
 });

@@ -5,7 +5,7 @@ services:
     image: postgres:15-alpine
     environment:
       POSTGRES_USER: passwordstream_user
-      POSTGRES_PASSWORD: 2eff4433a10be87e1d910befa4b5297393afb2422653917a
+      POSTGRES_PASSWORD: passwordstream_local
       POSTGRES_DB: passwordstream
     ports:
       - "5432:5432"

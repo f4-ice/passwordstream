@@ -37,7 +37,8 @@ h6,
 .plans-title,
 .tech-stack-title,
 .flow-row-title,
-.flowchart-title {
+.flowchart-title,
+.db-table-header {
   font-family: 'Bungee', cursive !important;
   font-weight: 400 !important;
 }
@@ -1764,7 +1765,7 @@ h6,
   padding-right: 2rem;
   /* Matches the gap so it seamlessly loops */
   flex-shrink: 0;
-  min-width: 100%;
+  width: max-content;
   animation: scroll-right 40s linear infinite;
 }
 

@@ -7,8 +7,8 @@
  * 3. Re-encrypt every single vault item using the new keys.
  * 4. Send the bulk-update payload back to the server.
  */
-import React, { useState } from 'react';
-import { generateKeys, encryptData, decryptData } from './crypto';
+import { useState } from 'react';
+import { generateKeys, encryptData, decryptData, rotateEncryptedData } from './crypto';
 import './index.css';
 
 const Account = ({ token, setToken, setEncryptionKey, setCurrentPage }) => {
@@ -37,12 +37,16 @@ const Account = ({ token, setToken, setEncryptionKey, setCurrentPage }) => {
       const { authKeyHex: oldAuthKeyHex, encryptionKey: oldEncryptionKey } = await generateKeys(oldPassword, userEmail);
       const { authKeyHex: newAuthKeyHex, encryptionKey: newEncryptionKey } = await generateKeys(newPassword, userEmail);
 
-      // 2. Fetch all vault items
-      const res = await fetch('/api/vault', {
+      // 2. Fetch all encrypted material that is protected by the master key
+      const [res, keysRes] = await Promise.all([fetch('/api/vault', {
         headers: { 'Authorization': `Bearer ${token}` }
-      });
+      }), fetch('/api/account/keys', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })]);
       if (!res.ok) throw new Error("Failed to fetch vault items");
+      if (!keysRes.ok) throw new Error("Failed to fetch encrypted account keys");
       const vaultItems = await res.json();
+      const encryptedKeys = await keysRes.json();
 
       // 3. Decrypt and re-encrypt every item
       const vault_updates = await Promise.all(vaultItems.map(async (item) => {
@@ -50,14 +54,25 @@ const Account = ({ token, setToken, setEncryptionKey, setCurrentPage }) => {
         try {
           decryptedPayloadStr = await decryptData(item.encrypted_payload, item.iv, oldEncryptionKey);
         } catch (err) {
-          throw new Error("Incorrect current password");
+          throw new Error("Incorrect current password", { cause: err });
         }
         
         const { ciphertext, iv } = await encryptData(decryptedPayloadStr, newEncryptionKey);
         return { id: item.id, encrypted_payload: ciphertext, iv };
       }));
 
-      // 4. Send the massive bulk update to the server
+      let encryptedPrivateRsaKey;
+      let encryptedPrivateEcdsaKey;
+      try {
+        [encryptedPrivateRsaKey, encryptedPrivateEcdsaKey] = await Promise.all([
+          rotateEncryptedData(encryptedKeys.encryptedPrivateRsaKey, oldEncryptionKey, newEncryptionKey),
+          rotateEncryptedData(encryptedKeys.encryptedPrivateEcdsaKey, oldEncryptionKey, newEncryptionKey)
+        ]);
+      } catch {
+        throw new Error("Incorrect current password");
+      }
+
+      // 4. Send the complete update to the server as one transaction
       const updateRes = await fetch('/api/account/password', {
         method: 'PUT',
         headers: {
@@ -67,7 +82,9 @@ const Account = ({ token, setToken, setEncryptionKey, setCurrentPage }) => {
         body: JSON.stringify({
           oldAuthKey: oldAuthKeyHex,
           newAuthKey: newAuthKeyHex,
-          vault_updates
+          vault_updates,
+          encryptedPrivateRsaKey,
+          encryptedPrivateEcdsaKey
         })
       });
 
@@ -81,7 +98,7 @@ const Account = ({ token, setToken, setEncryptionKey, setCurrentPage }) => {
       setOldPassword('');
       setNewPassword('');
       setConfirmPassword('');
-      setMessage({ text: "Master password successfully changed and vault re-encrypted!", type: "success" });
+      setMessage({ text: "Master password changed. Vault and private sharing keys were re-encrypted.", type: "success" });
 
     } catch (err) {
       console.error(err);

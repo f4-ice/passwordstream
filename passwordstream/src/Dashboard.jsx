@@ -7,8 +7,8 @@
  * 3. Fetches shared items, verifies their ECDSA signatures, and decrypts them with the Private RSA Key.
  * 4. Handles sharing items by encrypting them with the receiver's Public RSA Key and signing with the sender's Private ECDSA Key.
  */
-import React, { useState, useEffect } from 'react';
-import { encryptData, decryptData, encryptRSA, decryptRSA, signECDSA, verifyECDSA } from './crypto';
+import { useCallback, useEffect, useState } from 'react';
+import { decryptData, decryptSharedPayload, encryptData, encryptHybrid, fingerprintPublicKey, signECDSA, verifyECDSA } from './crypto';
 import './index.css';
 
 const Dashboard = ({ token, encryptionKey, asymKeys }) => {
@@ -24,6 +24,9 @@ const Dashboard = ({ token, encryptionKey, asymKeys }) => {
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareEmail, setShareEmail] = useState('');
   const [shareLoading, setShareLoading] = useState(false);
+  const [recipientFingerprint, setRecipientFingerprint] = useState('');
+  const [fingerprintConfirmed, setFingerprintConfirmed] = useState(false);
+  const [fingerprintStatus, setFingerprintStatus] = useState('');
 
   // Form state
   const [formData, setFormData] = useState({
@@ -35,18 +38,12 @@ const Dashboard = ({ token, encryptionKey, asymKeys }) => {
   });
   const [showPassword, setShowPassword] = useState(false);
 
-  useEffect(() => {
-    fetchCredentials();
-    fetchSharedCredentials();
-  }, [activeTab]);
-
   /**
    * Fetches the user's personal vault items from the backend and decrypts them locally.
    * Because the backend only stores encrypted blobs, the browser must decrypt every single item
    * using the symmetric Master Encryption Key before it can be displayed.
    */
-  const fetchCredentials = async () => {
-    setLoading(true);
+  const fetchCredentials = useCallback(async () => {
     try {
       const res = await fetch('/api/vault', {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -64,13 +61,12 @@ const Dashboard = ({ token, encryptionKey, asymKeys }) => {
           return { id: item.id, title: 'Decryption Error', error: true, type: 'vault' };
         }
       }));
-      setCredentials(decryptedItems);
+      return decryptedItems;
     } catch (err) {
       console.error(err);
-    } finally {
-      setLoading(false);
+      throw err;
     }
-  };
+  }, [token, encryptionKey]);
 
   /**
    * Fetches passwords that other users have shared with this account.
@@ -78,7 +74,7 @@ const Dashboard = ({ token, encryptionKey, asymKeys }) => {
    * 1. It verifies the ECDSA digital signature to mathematically prove who sent it.
    * 2. It uses the user's Private RSA Key to decrypt the payload (which was encrypted specifically for them).
    */
-  const fetchSharedCredentials = async () => {
+  const fetchSharedCredentials = useCallback(async () => {
     try {
       const res = await fetch('/api/shares', {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -102,7 +98,7 @@ const Dashboard = ({ token, encryptionKey, asymKeys }) => {
           }
 
           // 2. Decrypt with my private RSA
-          const decryptedPayloadStr = await decryptRSA(item.encrypted_payload, asymKeys.rsaPrivate);
+          const decryptedPayloadStr = await decryptSharedPayload(item.encrypted_payload, asymKeys.rsaPrivate);
           const data = JSON.parse(decryptedPayloadStr);
           
           decryptedShared.push({ 
@@ -117,16 +113,32 @@ const Dashboard = ({ token, encryptionKey, asymKeys }) => {
           decryptedShared.push({ id: item.id, title: 'Decryption Error', error: true, type: 'shared' });
         }
       }
-      setSharedCredentials(decryptedShared);
+      return decryptedShared;
     } catch (err) {
       console.error(err);
+      throw err;
     }
-  };
+  }, [token, asymKeys]);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([fetchCredentials(), fetchSharedCredentials()])
+      .then(([vaultItems, sharedItems]) => {
+        if (cancelled) return;
+        setCredentials(vaultItems);
+        setSharedCredentials(sharedItems);
+        setLoading(false);
+      })
+      .catch(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [activeTab, fetchCredentials, fetchSharedCredentials]);
 
   /**
    * Securely shares a credential with another user using Asymmetric Cryptography.
    * 1. Fetches the recipient's Public RSA Key from the server.
-   * 2. Encrypts the credential payload using the recipient's Public RSA Key (so only their private key can read it).
+   * 2. Encrypts with AES-GCM and wraps the random AES key with the recipient's RSA key.
    * 3. Digitally signs the encrypted payload using the sender's Private ECDSA Key (to prove authenticity).
    * 4. Sends the encrypted and signed package to the backend.
    */
@@ -151,6 +163,22 @@ const Dashboard = ({ token, encryptionKey, asymKeys }) => {
         'jwk', JSON.parse(recipient.public_rsa_key), { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['encrypt']
       );
 
+      const fingerprint = await fingerprintPublicKey(recipient.public_rsa_key);
+      const pinKey = `passwordstream:rsa-pin:${shareEmail.trim().toLowerCase()}`;
+      const pinnedFingerprint = localStorage.getItem(pinKey);
+      if (pinnedFingerprint && pinnedFingerprint !== fingerprint) {
+        setRecipientFingerprint(fingerprint);
+        setFingerprintStatus('The recipient key changed since your last share. Do not continue until you verify it out of band.');
+        throw new Error('Recipient public key changed');
+      }
+      if (recipientFingerprint !== fingerprint) {
+        setRecipientFingerprint(fingerprint);
+        setFingerprintConfirmed(false);
+        setFingerprintStatus(pinnedFingerprint ? 'This key matches the fingerprint pinned in this browser.' : 'First use: verify this fingerprint with the recipient through another channel.');
+        return;
+      }
+      if (!fingerprintConfirmed) throw new Error('Confirm the recipient fingerprint before sharing');
+
       // 2. Prepare payload
       const payloadStr = JSON.stringify({
         title: selectedItem.title,
@@ -160,8 +188,8 @@ const Dashboard = ({ token, encryptionKey, asymKeys }) => {
         notes: selectedItem.notes
       });
 
-      // 3. Encrypt payload with Recipient's RSA Public Key
-      const encryptedPayload = await encryptRSA(payloadStr, recipientRsaPublicObj);
+      // 3. Encrypt payload with AES-GCM and wrap only the AES key with RSA-OAEP
+      const encryptedPayload = await encryptHybrid(payloadStr, recipientRsaPublicObj);
 
       // 4. Sign encrypted payload with My ECDSA Private Key
       const signature = await signECDSA(encryptedPayload, asymKeys.ecdsaPrivate);
@@ -182,9 +210,13 @@ const Dashboard = ({ token, encryptionKey, asymKeys }) => {
 
       if (!shareRes.ok) throw new Error('Failed to share item');
 
+      localStorage.setItem(pinKey, fingerprint);
       alert(`Successfully shared with ${shareEmail}`);
       setShowShareModal(false);
       setShareEmail('');
+      setRecipientFingerprint('');
+      setFingerprintConfirmed(false);
+      setFingerprintStatus('');
     } catch (err) {
       console.error(err);
       alert(err.message || "Error sharing credential");
@@ -228,7 +260,7 @@ const Dashboard = ({ token, encryptionKey, asymKeys }) => {
 
       if (!res.ok) throw new Error("Failed to save item");
 
-      await fetchCredentials();
+      setCredentials(await fetchCredentials());
       setIsEditing(false);
       setSelectedItem(null);
     } catch (err) {
@@ -256,7 +288,7 @@ const Dashboard = ({ token, encryptionKey, asymKeys }) => {
 
       if (!res.ok) throw new Error("Failed to delete item");
 
-      await fetchCredentials();
+      setCredentials(await fetchCredentials());
       setSelectedItem(null);
     } catch (err) {
       console.error(err);
@@ -338,7 +370,12 @@ const Dashboard = ({ token, encryptionKey, asymKeys }) => {
               {activeTab === 'vault' && (
                   <>
                     <button className="secondary-btn" onClick={() => setIsEditing(true)}>Edit</button>
-                    <button className="secondary-btn" onClick={() => setShowShareModal(true)}>Share</button>
+                    <button className="secondary-btn" onClick={() => {
+                      setRecipientFingerprint('');
+                      setFingerprintConfirmed(false);
+                      setFingerprintStatus('');
+                      setShowShareModal(true);
+                    }}>Share</button>
                     <button className="secondary-btn" onClick={() => {
                         const dup = { ...selectedItem, id: 'new', title: selectedItem.title + " (Copy)" };
                         setSelectedItem(dup);
@@ -434,13 +471,31 @@ const Dashboard = ({ token, encryptionKey, asymKeys }) => {
                       type="email" 
                       className="form-input" 
                       value={shareEmail} 
-                      onChange={e => setShareEmail(e.target.value)} 
+                      onChange={e => {
+                        setShareEmail(e.target.value);
+                        setRecipientFingerprint('');
+                        setFingerprintConfirmed(false);
+                        setFingerprintStatus('');
+                      }}
                       placeholder="user@example.com"
                   />
+                  {recipientFingerprint && (
+                    <div style={{ marginTop: '15px', padding: '12px', background: '#f8fafc', borderRadius: '6px', overflowWrap: 'anywhere' }}>
+                      <strong>Recipient RSA fingerprint (SHA-256)</strong>
+                      <div style={{ fontFamily: 'monospace', margin: '8px 0', fontSize: '12px' }}>{recipientFingerprint}</div>
+                      <p style={{ fontSize: '12px', color: '#555' }}>{fingerprintStatus}</p>
+                      {!fingerprintStatus.startsWith('The recipient key changed') && (
+                        <label style={{ display: 'flex', gap: '8px', fontSize: '13px' }}>
+                          <input type="checkbox" checked={fingerprintConfirmed} onChange={e => setFingerprintConfirmed(e.target.checked)} />
+                          I verified this fingerprint through another channel
+                        </label>
+                      )}
+                    </div>
+                  )}
                   <div className="form-actions" style={{marginTop: '20px', display: 'flex', justifyContent: 'flex-end', gap: '10px'}}>
                       <button className="secondary-btn" onClick={() => setShowShareModal(false)}>Cancel</button>
                       <button className="primary-btn" onClick={handleShare} disabled={shareLoading}>
-                          {shareLoading ? 'Sharing...' : 'Share Securely'}
+                          {shareLoading ? 'Working...' : recipientFingerprint ? 'Share' : 'Check recipient key'}
                       </button>
                   </div>
               </div>

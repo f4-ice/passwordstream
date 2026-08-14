@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import './index.css';
 
 /**
@@ -8,19 +8,19 @@ import './index.css';
 const faqs = [
   {
     question: "What happens if I forget my master password?",
-    answer: "Because of our strict zero-knowledge architecture, we do not store your master password and cannot recover it for you. It is critical that you remember it or write it down in a safe, physical location."
+    answer: "PasswordStream has no recovery mechanism. The intended client does not send the raw master password, so losing it makes the encrypted vault and private sharing keys unavailable."
   },
   {
-    question: "What does \"Zero-Knowledge\" actually mean?",
-    answer: "It means your data is encrypted directly on your device before it is ever sent to our servers. We never hold the keys to decrypt your data, so even in the event of a server breach, your passwords remain completely unreadable and secure."
+    question: "What does client-side encryption protect?",
+    answer: "It helps protect vault contents if an attacker obtains a passive copy of the database, assuming a strong master password and the original frontend. It does not protect against modified JavaScript, a compromised device, or data captured while decrypted."
   },
   {
-    question: "Can I use facial recognition on any device?",
-    answer: "Facial recognition is an optional, secondary layer of convenience that processes biometric data entirely locally on your device. It requires a compatible camera and works strictly as an addition to your master password."
+    question: "Does PasswordStream use biometrics?",
+    answer: "No. Facial recognition and stored face descriptors were removed. PasswordStream currently authenticates with the password-derived authentication key only."
   },
   {
     question: "How does password sharing work?",
-    answer: "When you share a password, it is securely encrypted using the recipient's public key. Only they can decrypt it with their private key, ensuring the password is never exposed in transit."
+    answer: "The browser encrypts the payload with a random AES-GCM key and wraps that key with the recipient's RSA public key. Verify the displayed fingerprint out of band: the server distributes public keys and could substitute one if compromised."
   }
 ];
 

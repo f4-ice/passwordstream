@@ -1,5 +1,5 @@
 // crypto.js
-// Utility functions for Zero-Knowledge Cryptography using the native Web Crypto API
+// Client-side cryptography helpers using the native Web Crypto API.
 
 // Helper to convert string to ArrayBuffer and vice-versa
 const enc = new TextEncoder();
@@ -15,8 +15,8 @@ function bufferToHex(buffer) {
 }
 
 /**
- * Derives a strong 512-bit cryptographic key from the user's master password and email.
- * This ensures two users with the same password have completely different keys.
+ * Derives 512 bits from the user's master password and normalized email.
+ * Overall resistance to guessing still depends on master-password strength.
  */
 async function deriveMasterKeyMaterial(password, email) {
   const keyMaterial = await window.crypto.subtle.importKey(
@@ -35,7 +35,7 @@ async function deriveMasterKeyMaterial(password, email) {
     {
       name: 'PBKDF2',
       salt: enc.encode(email.toLowerCase()), // Using email as the salt
-      iterations: 600000, // OWASP recommended iterations for extreme security
+      iterations: 600000,
       hash: 'SHA-256'
     },
     keyMaterial,
@@ -44,7 +44,8 @@ async function deriveMasterKeyMaterial(password, email) {
 }
 
 /**
- * Generates the Authentication Key (sent to server) and the Encryption Key (kept strictly local)
+ * Generates the Authentication Key (sent to the server) and Encryption Key
+ * (retained in memory by the intended client).
  */
 export async function generateKeys(password, email) {
   const bits = await deriveMasterKeyMaterial(password, email);
@@ -99,23 +100,24 @@ export async function decryptData(ciphertextHex, ivHex, encryptionKey) {
   const ciphertextBuffer = new Uint8Array(ciphertextHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
   const ivBuffer = new Uint8Array(ivHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
 
-  try {
-    const decryptedBuffer = await window.crypto.subtle.decrypt(
-      {
-        name: 'AES-GCM',
-        iv: ivBuffer
-      },
-      encryptionKey,
-      ciphertextBuffer
-    );
-    return dec.decode(decryptedBuffer);
-  } catch (err) {
-    console.error("Decryption failed. The encryption key or data is invalid.", err);
-    throw err;
-  }
+  const decryptedBuffer = await window.crypto.subtle.decrypt(
+    {
+      name: 'AES-GCM',
+      iv: ivBuffer
+    },
+    encryptionKey,
+    ciphertextBuffer
+  );
+  return dec.decode(decryptedBuffer);
 }
 
-// --- ASYMMETRIC CRYPTOGRAPHY (ZERO-KNOWLEDGE SHARING) ---
+export async function rotateEncryptedData(serializedEncryptedData, oldEncryptionKey, newEncryptionKey) {
+  const encryptedData = JSON.parse(serializedEncryptedData);
+  const plaintext = await decryptData(encryptedData.ciphertext, encryptedData.iv, oldEncryptionKey);
+  return JSON.stringify(await encryptData(plaintext, newEncryptionKey));
+}
+
+// --- ASYMMETRIC AND HYBRID SHARING CRYPTOGRAPHY ---
 
 export function bufferToBase64(buffer) {
   return btoa(String.fromCharCode(...new Uint8Array(buffer)));
@@ -186,6 +188,79 @@ export async function decryptRSA(base64Ciphertext, rsaPrivateKeyObj) {
     base64ToBuffer(base64Ciphertext)
   );
   return dec.decode(decryptedBuffer);
+}
+
+/**
+ * Encrypts an arbitrary-length payload with AES-256-GCM and wraps only the
+ * random AES key with RSA-OAEP. The serialized envelope is what gets signed.
+ */
+export async function encryptHybrid(text, rsaPublicKeyObj) {
+  const aesKey = await window.crypto.subtle.generateKey(
+    { name: 'AES-GCM', length: 256 },
+    true,
+    ['encrypt', 'decrypt']
+  );
+  const iv = window.crypto.getRandomValues(new Uint8Array(12));
+  const plaintext = enc.encode(text);
+  const ciphertext = await window.crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aesKey, plaintext);
+  const rawAesKey = await window.crypto.subtle.exportKey('raw', aesKey);
+  const wrappedKey = await window.crypto.subtle.encrypt({ name: 'RSA-OAEP' }, rsaPublicKeyObj, rawAesKey);
+
+  return JSON.stringify({
+    v: 1,
+    alg: 'RSA-OAEP-256+A256GCM',
+    wrappedKey: bufferToBase64(wrappedKey),
+    iv: bufferToBase64(iv),
+    ciphertext: bufferToBase64(ciphertext)
+  });
+}
+
+export async function decryptHybrid(serializedEnvelope, rsaPrivateKeyObj) {
+  const envelope = JSON.parse(serializedEnvelope);
+  if (envelope.v !== 1 || envelope.alg !== 'RSA-OAEP-256+A256GCM') {
+    throw new Error('Unsupported sharing envelope');
+  }
+
+  const rawAesKey = await window.crypto.subtle.decrypt(
+    { name: 'RSA-OAEP' },
+    rsaPrivateKeyObj,
+    base64ToBuffer(envelope.wrappedKey)
+  );
+  const aesKey = await window.crypto.subtle.importKey('raw', rawAesKey, { name: 'AES-GCM' }, false, ['decrypt']);
+  const plaintext = await window.crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: new Uint8Array(base64ToBuffer(envelope.iv)) },
+    aesKey,
+    base64ToBuffer(envelope.ciphertext)
+  );
+  return dec.decode(plaintext);
+}
+
+export async function decryptSharedPayload(payload, rsaPrivateKeyObj) {
+  try {
+    const envelope = JSON.parse(payload);
+    if (envelope?.v === 1) return decryptHybrid(payload, rsaPrivateKeyObj);
+  } catch {
+    // Legacy shares are a single base64-encoded RSA-OAEP ciphertext.
+  }
+  return decryptRSA(payload, rsaPrivateKeyObj);
+}
+
+function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+export async function fingerprintPublicKey(publicJwk) {
+  const parsed = typeof publicJwk === 'string' ? JSON.parse(publicJwk) : publicJwk;
+  const digest = await window.crypto.subtle.digest('SHA-256', enc.encode(canonicalJson(parsed)));
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0'))
+    .join('')
+    .toUpperCase()
+    .match(/.{1,4}/g)
+    .join(' ');
 }
 
 export async function signECDSA(text, ecdsaPrivateKeyObj) {

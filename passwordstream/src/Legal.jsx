@@ -1,134 +1,74 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import './index.css';
 
-/**
- * Legal Content Dictionary
- * Stores the bilingual text (English and Spanish) for the application's compliance and legal framework.
- * Explains how the Zero-Knowledge architecture adheres to global privacy laws like GDPR and CCPA.
- */
-const legalData = {
+const notices = {
   en: {
-    title: "Legal and Regulatory Framework",
-    description: "The following laws and regulations guide our data privacy and security practices. Here is how PasswordStream complies with them, especially concerning our zero-knowledge architecture and optional facial recognition.",
-    laws: [
+    title: 'Security and Data Notice',
+    description: 'This presentation-only page summarizes behavior visible in the PasswordStream source code. It is not a Privacy Policy, Terms of Service, legal notice, certification, legal opinion, or claim of regulatory compliance.',
+    items: [
       {
-        id: 1,
-        name: "Law 8968 (Protection of Personal Data, Costa Rica)",
-        scope: "Protection of personal data, supervised by PRODHAB.",
-        compliance: "We protect all personal data and metadata using zero-knowledge encryption. Activating optional facial recognition requires explicit and separate consent. Biometric data is never processed or stored as raw images."
+        name: 'Data processed by the service',
+        scope: 'Account and encrypted application data.',
+        detail: 'When the prototype is run, the server stores email addresses, bcrypt hashes of password-derived authentication keys, public sharing keys, master-key-encrypted private sharing keys, encrypted credential items, and encrypted shares.'
       },
       {
-        id: 2,
-        name: "Regulation to Law 8968",
-        scope: "Operational procedures and obligations developed by PRODHAB.",
-        compliance: "Applied to our user registration and facial biometrics, we ensure secure local retention and verifiable deletion of the biometric template under our strict zero-knowledge model."
+        name: 'Client-side encryption',
+        scope: 'Protection against passive disclosure of stored vault data.',
+        detail: 'The intended frontend derives keys with PBKDF2 and encrypts each credential separately with AES-GCM before upload. This protection assumes a strong master password and an authentic, unmodified frontend.'
       },
       {
-        id: 3,
-        name: "GDPR — Regulation (EU) 2016/679",
-        scope: "Protection of personal data for residents of the European Union.",
-        compliance: "Facial recognition is classified as a special category of data under GDPR. Our zero-knowledge model inherently supports privacy by design and data minimization. We obtain explicit consent before any biometric processing."
+        name: 'Threat-model limits',
+        scope: 'Active server, frontend, dependency, and device compromise.',
+        detail: 'An attacker able to modify delivered JavaScript, browser dependencies, or the device can capture the master password, cryptographic keys, or decrypted data. Client-side encryption does not protect those scenarios.'
       },
       {
-        id: 4,
-        name: "ISO/IEC 27001:2022",
-        scope: "Information Security Management System (ISMS).",
-        compliance: "Our system employs strong cryptography (PBKDF2 with 600,000 iterations, bcrypt, AES-GCM, RSA-OAEP, and ECDSA) to rigorously protect password vaults and secure our database infrastructure against incidents."
+        name: 'Sharing and identity',
+        scope: 'Hybrid encryption and public-key verification.',
+        detail: 'Shares use AES-256-GCM with RSA-OAEP key wrapping and ECDSA signatures. The server distributes public keys. Fingerprint pinning can detect later key changes in the same browser, but first-use fingerprints must be verified out of band.'
       },
       {
-        id: 5,
-        name: "ISO/IEC 27701:2025",
-        scope: "Privacy Information Management System (PIMS).",
-        compliance: "We maintain absolute transparency regarding any Personally Identifiable Information (PII) we process. Responsibility and retention roles are strictly defined, particularly regarding our password sharing features."
-      },
-      {
-        id: 6,
-        name: "ISO/IEC 30107-3",
-        scope: "Detection of presentation attacks in biometric systems (anti-spoofing).",
-        compliance: "Our optional facial recognition is designed with security in mind. We acknowledge the standard's recommendations regarding liveness detection and explicitly advise users that it is a secondary, convenience-based authentication layer."
-      },
-      {
-        id: 7,
-        name: "NIST SP 800-63B",
-        scope: "Digital Identity Guidelines: Authentication and Lifecycle Management.",
-        compliance: "The master password serves as your primary authentication factor. Biometrics is offered solely as an optional, complementary multifactor approach, aligning perfectly with NIST's recommendations."
-      },
-      {
-        id: 8,
-        name: "NIST CSF 2.0",
-        scope: "Cybersecurity Framework for Risk Management.",
-        compliance: "We continuously map our cryptographic controls and database protections against the framework's core functions to identify, protect, detect, respond, and recover from potential cybersecurity incidents."
+        name: 'Compliance status',
+        scope: 'No certification or legal conclusion.',
+        detail: 'The repository has not established GDPR, Costa Rican privacy-law, ISO, NIST, or other regulatory compliance. A real deployment requires legal review, governance, retention procedures, incident response, accessibility work, and an independent security assessment.'
       }
     ]
   },
   es: {
-    title: "Marco Legal y Normativo",
-    description: "Las siguientes leyes y normativas guían nuestras prácticas de privacidad y seguridad de datos. Así es como PasswordStream cumple con ellas, especialmente en relación con nuestra arquitectura zero-knowledge y el reconocimiento facial opcional.",
-    laws: [
+    title: 'Aviso de Seguridad y Datos',
+    description: 'Esta página, creada únicamente para la presentación del proyecto, resume el comportamiento visible en el código fuente de PasswordStream. No es una Política de Privacidad, Términos de Servicio, aviso legal, certificación, asesoría legal ni declaración de cumplimiento normativo.',
+    items: [
       {
-        id: 1,
-        name: "Ley 8968 (Protección de la Persona frente al Tratamiento de sus Datos Personales, Costa Rica)",
-        scope: "Protección de datos personales, con supervisión de PRODHAB.",
-        compliance: "Protegemos todos los datos personales y metadatos utilizando cifrado zero-knowledge. La activación del reconocimiento facial opcional requiere un consentimiento explícito y separado. Los datos biométricos nunca se procesan ni almacenan como imágenes crudas."
+        name: 'Datos procesados por el servicio',
+        scope: 'Cuenta y datos cifrados de la aplicación.',
+        detail: 'Cuando se ejecuta el prototipo, el servidor almacena correos electrónicos, hashes bcrypt de claves de autenticación derivadas, claves públicas, claves privadas de compartición cifradas con la clave maestra, credenciales cifradas y comparticiones cifradas.'
       },
       {
-        id: 2,
-        name: "Reglamento a la Ley 8968",
-        scope: "Procedimientos operativos y obligaciones desarrolladas por PRODHAB.",
-        compliance: "Aplicado a nuestro registro de usuarios y biometría facial, garantizamos la retención local segura y la eliminación verificable de la plantilla biométrica bajo nuestro estricto modelo zero-knowledge."
+        name: 'Cifrado en el cliente',
+        scope: 'Protección ante la divulgación pasiva de datos almacenados.',
+        detail: 'El frontend previsto deriva claves con PBKDF2 y cifra cada credencial por separado con AES-GCM antes de subirla. Esta protección presupone una contraseña maestra robusta y un frontend auténtico y sin modificaciones.'
       },
       {
-        id: 3,
-        name: "GDPR — Reglamento (UE) 2016/679",
-        scope: "Protección de datos personales de residentes de la Unión Europea.",
-        compliance: "El reconocimiento facial se clasifica como una categoría especial de datos bajo el GDPR. Nuestro modelo zero-knowledge apoya intrínsecamente la privacidad desde el diseño y la minimización de datos. Obtenemos consentimiento explícito antes de cualquier procesamiento biométrico."
+        name: 'Límites del modelo de amenazas',
+        scope: 'Compromiso activo del servidor, frontend, dependencias o dispositivo.',
+        detail: 'Quien pueda modificar el JavaScript entregado, las dependencias o el dispositivo puede capturar la contraseña maestra, las claves o los datos descifrados. El cifrado en el cliente no protege esos escenarios.'
       },
       {
-        id: 4,
-        name: "ISO/IEC 27001:2022",
-        scope: "Sistema de gestión de seguridad de la información (SGSI).",
-        compliance: "Nuestro sistema emplea criptografía robusta (PBKDF2 con 600,000 iteraciones, bcrypt, AES-GCM, RSA-OAEP y ECDSA) para proteger rigurosamente las bóvedas de contraseñas y asegurar nuestra infraestructura de base de datos contra incidentes."
+        name: 'Compartición e identidad',
+        scope: 'Cifrado híbrido y verificación de claves públicas.',
+        detail: 'Las comparticiones usan AES-256-GCM, envoltura RSA-OAEP y firmas ECDSA. El servidor distribuye las claves públicas. El pinning detecta cambios posteriores en el mismo navegador, pero la primera huella debe verificarse por otro canal.'
       },
       {
-        id: 5,
-        name: "ISO/IEC 27701:2025",
-        scope: "Sistema de gestión de privacidad (PIMS).",
-        compliance: "Mantenemos absoluta transparencia respecto a cualquier Información de Identificación Personal (PII) que procesamos. Los roles de responsabilidad y retención están estrictamente definidos, particularmente en nuestras funciones de compartición de contraseñas."
-      },
-      {
-        id: 6,
-        name: "ISO/IEC 30107-3",
-        scope: "Detección de ataques de presentación en sistemas biométricos (anti-spoofing).",
-        compliance: "Nuestro reconocimiento facial opcional está diseñado pensando en la seguridad. Reconocemos las recomendaciones del estándar sobre la detección de vida y advertimos explícitamente a los usuarios que es una capa de autenticación secundaria basada en la conveniencia."
-      },
-      {
-        id: 7,
-        name: "NIST SP 800-63B",
-        scope: "Guía de autenticación digital.",
-        compliance: "La contraseña maestra sirve como su factor de autenticación principal. La biometría se ofrece únicamente como un enfoque multifactor opcional y complementario, alineándose perfectamente con las recomendaciones del NIST."
-      },
-      {
-        id: 8,
-        name: "NIST CSF 2.0",
-        scope: "Marco de gestión de riesgo de ciberseguridad.",
-        compliance: "Mapeamos continuamente nuestros controles criptográficos y protecciones de base de datos contra las funciones principales del marco para identificar, proteger, detectar, responder y recuperarnos de posibles incidentes de ciberseguridad."
+        name: 'Estado de cumplimiento',
+        scope: 'Sin certificación ni conclusión legal.',
+        detail: 'El repositorio no ha demostrado cumplimiento con GDPR, legislación costarricense, ISO, NIST u otros marcos. Un despliegue real requiere revisión legal, gobierno de datos, políticas de retención, respuesta a incidentes y una evaluación de seguridad independiente.'
       }
     ]
   }
 };
 
-/**
- * Legal Component
- * 
- * Renders the bilingual legal compliance page.
- * Allows users to toggle between English and Spanish using a language selector dropdown.
- */
 const Legal = () => {
-  // State to manage the currently selected language ('en' for English, 'es' for Spanish)
   const [lang, setLang] = useState('en');
-
-  // Derive the localized content based on the active language state
-  const data = legalData[lang];
+  const data = notices[lang];
 
   return (
     <div className="legal-container">
@@ -141,23 +81,19 @@ const Legal = () => {
           </select>
         </div>
       </div>
-      <div className="legal-header">
-        <h1>{data.title}</h1>
-      </div>
-      
+      <div className="legal-header"><h1>{data.title}</h1></div>
       <p className="legal-intro">{data.description}</p>
-
       <div className="laws-grid">
-        {data.laws.map(law => (
-          <div key={law.id} className="law-card">
-            <h2>{law.name}</h2>
+        {data.items.map(item => (
+          <div key={item.name} className="law-card">
+            <h2>{item.name}</h2>
             <div className="law-section">
               <strong>{lang === 'en' ? 'Scope:' : 'Ámbito:'}</strong>
-              <p>{law.scope}</p>
+              <p>{item.scope}</p>
             </div>
             <div className="law-section">
-              <strong>{lang === 'en' ? 'Compliance:' : 'Cumplimiento:'}</strong>
-              <p>{law.compliance}</p>
+              <strong>{lang === 'en' ? 'Current behavior:' : 'Comportamiento actual:'}</strong>
+              <p>{item.detail}</p>
             </div>
           </div>
         ))}

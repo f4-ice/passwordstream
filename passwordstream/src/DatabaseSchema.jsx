@@ -1,4 +1,3 @@
-import React from 'react';
 
 const DatabaseIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -148,7 +147,6 @@ const DatabaseSchema = () => {
                 { name: 'encrypted_private_rsa_key', typeIcon: <TextIcon /> },
                 { name: 'public_ecdsa_key', typeIcon: <TextIcon /> },
                 { name: 'encrypted_private_ecdsa_key', typeIcon: <TextIcon /> },
-                { name: 'face_descriptor', typeIcon: <TextIcon /> },
                 { name: 'created_at', typeIcon: <ClockIcon /> }
               ]}
             />
