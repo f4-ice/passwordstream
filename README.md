@@ -10,6 +10,8 @@
   </p>
 <br/>
 
+<a href="https://passwordstream.com/">Visit The Live Demo!</a>
+
 PasswordStream is an open-source, functional demo of a possible **zero-knowledge password manager product**, with client-side vault encryption, master-password rotation, and encrypted sharing.
 
 It demonstrates how the main workflows of a real product could operate across a React frontend, Node.js API, and PostgreSQL database. The project has not received an independent security audit, so it should be treated as a product prototype rather than a production-ready service.
