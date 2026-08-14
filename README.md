@@ -1,9 +1,14 @@
 <div align="center">
   <img src="passwordstream/src/assets/logo.svg" width="420" alt="PasswordStream Logo"/>
-
+  <p>
+    <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"/>
+    <img src="https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB" alt="React"/>
+    <img src="https://img.shields.io/badge/Node.js-339933?logo=node.js&logoColor=white" alt="Node.js"/>
+    <img src="https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white" alt="PostgreSQL"/>
+    <img src="https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white" alt="Docker"/>
+    <img src="https://img.shields.io/badge/status-demo%20%2F%20unaudited-orange" alt="Status: Demo / Unaudited"/>
+  </p>
 <br/>
-
-# PasswordStream
 
 PasswordStream is an open-source, functional demo of a possible **zero-knowledge password manager product**, with client-side vault encryption, master-password rotation, and encrypted sharing.
 
